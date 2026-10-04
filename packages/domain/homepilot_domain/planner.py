@@ -95,12 +95,13 @@ def build_plan(st: HouseholdState, commitments: list[Commitment], actor_id: str,
             slack = (f" After the appointment and {travel} min of travel, {owner.display_name} reaches "
                      f"'{f.next_event.title}' at {_fmt(f.next_event.start)} with "
                      f"{'no spare time' if s == 0 else f'{s} min to spare'}.")
-        rationale.append(f"{owner.display_name} takes '{ev.title}': free at {_fmt(ev.start)}.{slack}")
+        verb = "is suggested for" if len(ok) > 1 else "takes"
+        rationale.append(f"{owner.display_name} {verb} '{ev.title}': free at {_fmt(ev.start)}.{slack}")
         if len(ok) > 1:
             confidence = "medium"
             alts = ", ".join(p.display_name for p, _ in ok[1:])
             conflicts.append(Conflict(kind="ambiguous_owner", severity="low", subjects=[ev.id],
-                                      message=f"{alts} could also take '{ev.title}'; {owner.display_name} was chosen by lowest load.",
+                                      message=f"{alts} could also take '{ev.title}'. {owner.display_name} is only a suggestion (currently the lightest load) - your call.",
                                       options=[f"Assign to {p.display_name}" for p, _ in ok[1:]]))
         working.append(ev)
         actions.append(Action(type="create_event", args=ev.model_dump(mode="json"),

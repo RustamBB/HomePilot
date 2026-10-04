@@ -129,7 +129,7 @@ function showProposal(p, reply, trace) {
     h += `<div class="row"><span class="tag">confidence: ${esc(p.confidence)}</span>${p.constraints_considered.length ? `<span class="muted">Considered: ${esc(p.constraints_considered.join("; "))}</span>` : ""}</div><ul>` +
       owned.map(([a,i]) => { const cur = a.args.owner ?? a.args.assigned_to ?? "";
         return `<li>${esc(a.args.title ?? a.args.name)} — <label class="muted">owner <select data-i="${i}"><option value="">(none)</option>${S.context.household.people.filter(x=>x.role==="parent"||x.role==="caregiver").map(x=>`<option value="${x.id}" ${x.id===cur?"selected":""}>${esc(x.display_name)}</option>`).join("")}</select></label></li>`; }).join("") +
-      `</ul><div class="row"><button id="ok">Confirm &amp; save</button><button class="sec" id="no">Reject</button></div><div id="res" role="status"></div>`;
+      `</ul><div class="row"><button id="ok" ${p.conflicts.some(c=>c.severity==="high")?"disabled title=\"Resolve the conflict first\"":""}>Confirm &amp; save</button><button class="sec" id="no">Reject</button></div><div id="res" role="status"></div>`;
   }
   $("#reply").innerHTML = h;
   if (p) {

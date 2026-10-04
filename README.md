@@ -21,7 +21,7 @@ services/mcp/        MCP server: 19 tools
 packages/domain/     data model, conflict engine, planner, use cases (LLM-independent)
 demo/                golden scenario
 tests/               unit + real-MCP end-to-end tests
-docs/                spec PDF, friction log
+docs/                specs, DEMO.md script, friction log
 ```
 
 Key design rules (from the spec): write tools only **stage drafts**; only a human (via the API's confirm endpoint → `confirm_plan`, which is not exposed to the agent) commits state. Every state change is audited and undoable. Task text is sanitised and treated as data. Households are isolated by id.
@@ -40,7 +40,7 @@ For Bedrock mode set `HOMEPILOT_AGENT=bedrock`, AWS credentials and `HOMEPILOT_M
 Run `make demo-seed`, open the app, click **Plan it** with the text from `demo/golden_scenario.txt`, then **Confirm & save**. Switch "Acting as" to Ali to see only Ali's next actions. The other chips cover an ambiguous owner and an impossible schedule.
 
 ## Tests
-`make test` — domain rules, safety (injection text, household boundary, staged writes) and an end-to-end run against a spawned MCP server.
+`make rehearse` runs the demo-reliability protocol (reset → golden scenario → confirm → verify) five times. `make test` — domain rules, safety (injection text, household boundary, staged writes) and an end-to-end run against a spawned MCP server.
 
 ## Safety
 State-changing actions require confirmation. Demo data is synthetic.

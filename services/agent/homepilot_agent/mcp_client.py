@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import time
+import uuid
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -13,12 +15,16 @@ from mcp.client.streamable_http import streamable_http_client
 MCP_URL = os.environ.get("HOMEPILOT_MCP_URL", "http://127.0.0.1:8765/mcp")
 
 
+log = logging.getLogger("homepilot.trace")
+
+
 class McpCallError(RuntimeError):
     pass
 
 
 class HomePilotMcp:
     def __init__(self, session: ClientSession, trace: list[dict] | None = None):
+        self.trace_id = uuid.uuid4().hex[:12]
         self.session = session
         self.trace = trace if trace is not None else []
 
@@ -28,10 +34,12 @@ class HomePilotMcp:
         ms = int((time.perf_counter() - t0) * 1000)
         if res.isError:
             text = "".join(getattr(c, "text", "") for c in res.content)
-            self.trace.append({"tool": tool, "args": args, "ms": ms, "error": text})
+            self.trace.append({"tool": tool, "args": args, "ms": ms, "error": text, "trace_id": self.trace_id})
+            log.warning("trace_id=%s tool=%s status=error ms=%d", self.trace_id, tool, ms)
             raise McpCallError(text)
         data = _unwrap(res)
-        self.trace.append({"tool": tool, "args": args, "ms": ms, "summary": _summary(tool, data)})
+        self.trace.append({"tool": tool, "args": args, "ms": ms, "summary": _summary(tool, data), "trace_id": self.trace_id})
+        log.info("trace_id=%s tool=%s status=ok ms=%d", self.trace_id, tool, ms)
         return data
 
 

@@ -30,7 +30,7 @@ class ActorIn(BaseModel):
 
 def _err(e: McpCallError) -> HTTPException:
     msg = str(e)
-    code = 404 if "not_found" in msg else 403 if "not_in_household" in msg else 409 if "not_pending" in msg or "override_conflict" in msg else 400
+    code = 404 if "not_found" in msg else 403 if "not_in_household" in msg else 409 if "not_pending" in msg or "override_conflict" in msg or "hard_conflict" in msg else 400
     return HTTPException(code, msg)
 
 

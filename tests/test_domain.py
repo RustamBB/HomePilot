@@ -100,3 +100,26 @@ def test_direct_writes_are_only_staged(svc):
     from homepilot_domain import Action
     r = svc.stage("demo", "sam", Action(type="create_task", args={"id": "t_x", "title": "x", "owner": "sam"}), "x")
     assert r["status"] == "pending_confirmation" and svc.tasks("demo", "sam") == []
+
+
+def test_confirm_blocked_while_hard_conflict_remains(svc):
+    c = golden()
+    c[1] = Commitment(kind="constraint", title="has class", person="ali", start=SAT(8, 45), end=SAT(12))
+    p = svc.propose("demo", c, "sam")
+    with pytest.raises(HomePilotError) as e:
+        svc.confirm("demo", p["id"], "sam")
+    assert e.value.code == "hard_conflict" and svc.tasks("demo", "sam") == []
+
+
+def test_ambiguous_owner_is_a_suggestion_not_a_verdict(svc):
+    p = svc.propose("demo", [Commitment(kind="appointment", title="Maya: dentist", person="maya", start=SAT(14))], "sam")
+    assert any("is suggested for" in r for r in p["rationale"])
+
+
+def test_daily_brief_returns_at_most_five_items(svc):
+    st = svc.state("demo")
+    from homepilot_domain import Task
+    for i in range(9):
+        st.tasks[f"t{i}"] = Task(id=f"t{i}", title=f"Task {i}", owner="sam", due_at=datetime(2026, 10, 17, 9 + i % 5))
+    b = svc.daily_brief("demo")
+    assert len(b["items"]) == 5 and "top 5" in b["summary"]

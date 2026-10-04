@@ -1,7 +1,7 @@
 PY ?= python3
 export PYTHONPATH := packages/domain:services/mcp:services/agent:services/api
 
-.PHONY: install mcp api web run test selftest demo-seed
+.PHONY: install mcp api web run test selftest demo-seed rehearse
 install:
 	$(PY) -m pip install -e ".[dev]"
 
@@ -22,3 +22,6 @@ demo-seed:      ## reset the synthetic household to its seed state
 
 test:
 	$(PY) -m pytest -q
+
+rehearse:       ## 5 consecutive clean golden-scenario runs against a running MCP server
+	$(PY) scripts/rehearse.py

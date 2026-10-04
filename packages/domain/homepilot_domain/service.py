@@ -86,25 +86,31 @@ class Service:
         msgs = [n.text for n in st.notifications if n.to == pid]
         return {"person": pid, "items": items, "notifications": msgs}
 
-    def daily_brief(self, hid: str, person_id: str | None = None) -> dict:
+    def daily_brief(self, hid: str, person_id: str | None = None, max_items: int = 5) -> dict:
+        """At most `max_items` items, ordered by risk then urgency."""
         st = self.state(hid)
         now = self.store.now(st)
-        risks = [c for c in self.conflicts(hid) if c["severity"] in ("high", "medium")]
         horizon = now + timedelta(hours=36)
-        today = [e for e in st.events.values() if now.date() <= e.start.date() <= horizon.date() and e.end >= now
-                 and e.kind != "busy" and (not person_id or person_id in e.attendees or e.owner == person_id)]
-        due = [t for t in st.tasks.values() if t.status == "open" and t.due_at and t.due_at <= now + timedelta(hours=72)
-               and (not person_id or t.owner == person_id)]
+        items: list[dict] = []
+        for c in self.conflicts(hid):
+            if c["severity"] in ("high", "medium") and (not person_id or person_id in c["subjects"] or c["kind"] != "overloaded"):
+                items.append({"kind": "at_risk", "rank": 0 if c["severity"] == "high" else 1, "when": "", "title": c["message"]})
         pending = [p for p in st.proposals.values() if p.status == "pending"]
-        parts = []
-        if risks:
-            parts.append(f"{len(risks)} thing(s) at risk")
         if pending:
-            parts.append(f"{len(pending)} plan(s) waiting for approval")
-        parts.append(f"{len(today)} event(s) soon, {len(due)} task(s) due within 3 days")
-        return {"summary": "; ".join(parts) + ".", "at_risk": risks,
-                "events": _dump(sorted(today, key=lambda e: e.start)),
-                "tasks_due": _dump(sorted(due, key=lambda t: t.due_at)), "pending_proposals": len(pending)}
+            items.append({"kind": "pending_plan", "rank": 1, "when": "", "title": f"{len(pending)} plan(s) waiting for approval"})
+        for e in st.events.values():
+            if now <= e.end and e.start <= horizon and e.kind != "busy" and (not person_id or person_id in e.attendees or e.owner == person_id):
+                items.append({"kind": "event", "rank": 2, "when": e.start.isoformat(), "title": e.title})
+        for t in st.tasks.values():
+            if t.status == "open" and t.due_at and t.due_at <= now + timedelta(hours=72) and (not person_id or t.owner == person_id):
+                items.append({"kind": "task_due", "rank": 3, "when": t.due_at.isoformat(), "title": t.title})
+        items.sort(key=lambda i: (i["rank"], i["when"]))
+        total = len(items)
+        items = items[:max_items]
+        risk = sum(i["kind"] == "at_risk" for i in items)
+        summary = (f"{total} item(s) need attention" + (f", {risk} at risk" if risk else "")
+                   + (f" (showing top {max_items})" if total > max_items else "") + ".") if total else "Nothing needs attention."
+        return {"summary": summary, "items": items, "pending_proposals": len(pending)}
 
     # ---- drafting (never mutates household entities) -------------------------------------
     def propose(self, hid: str, commitments: list[Commitment], actor_id: str, message: str = "") -> dict:
@@ -145,6 +151,9 @@ class Service:
             prop = self._prop(st, proposal_id)
             if prop.status != "pending":
                 raise HomePilotError("not_pending", f"Proposal is already {prop.status}.")
+            hard = [c for c in prop.conflicts if c.severity == "high"]
+            if hard:
+                raise HomePilotError("hard_conflict", f"{hard[0].message} Resolve it (reject and re-plan) before saving.")
             actions = [a.model_copy(deep=True) for a in prop.actions]
             for idx, who in (overrides or {}).items():
                 self._override(st, actions, int(idx), self.store.require_member(st, who))
