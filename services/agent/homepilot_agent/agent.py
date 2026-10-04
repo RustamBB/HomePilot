@@ -71,8 +71,9 @@ class StrandsAgent:
     """Bedrock-backed brain. Requires `pip install .[aws]` and AWS credentials with Bedrock model access."""
     mode = "bedrock"
 
-    def __init__(self, url: str = MCP_URL, model_id: str | None = None):
+    def __init__(self, url: str = MCP_URL, model_id: str | None = None, model: Any = None):
         self.url = url
+        self._model = model  # injectable for tests
         self.model_id = model_id or os.environ.get("HOMEPILOT_MODEL_ID", "us.anthropic.claude-sonnet-4-5-20250929-v1:0")
 
     async def handle(self, message: str, actor_id: str, household_id: str = "demo") -> AgentResult:
@@ -87,7 +88,7 @@ class StrandsAgent:
         trace: list[dict] = []
         with client:
             tools = [t for t in client.list_tools_sync() if t.tool_name in allowed]
-            agent = Agent(model=BedrockModel(model_id=self.model_id, temperature=0.1), tools=tools,
+            agent = Agent(model=self._model or BedrockModel(model_id=self.model_id, temperature=0.1), tools=tools,
                           system_prompt=SYSTEM_PROMPT)
             result = await agent.invoke_async(f"household_id={household_id} actor_id={actor_id}\nUser: {message}")
             for m in agent.messages:

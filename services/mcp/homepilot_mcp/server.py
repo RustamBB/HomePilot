@@ -13,8 +13,16 @@ from mcp.server.transport_security import TransportSecuritySettings
 from homepilot_domain import Action, Commitment, Service, Store, seed_demo
 from homepilot_domain.sanitize import clean_text
 
-store = Store(os.environ.get("HOMEPILOT_DATA_FILE"))
-if "demo" not in store._states:  # noqa: SLF001
+def _make_store() -> Store:
+    """DynamoDB when HOMEPILOT_DDB_TABLE is set, else JSON file (HOMEPILOT_DATA_FILE), else in-memory."""
+    if table := os.environ.get("HOMEPILOT_DDB_TABLE"):
+        from homepilot_domain.backends import DynamoBackend
+        return Store(backend=DynamoBackend(table, os.environ.get("AWS_REGION")))
+    return Store(os.environ.get("HOMEPILOT_DATA_FILE"))
+
+
+store = _make_store()
+if not store.has("demo"):
     store.put(seed_demo())
 svc = Service(store)
 

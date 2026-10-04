@@ -1,7 +1,6 @@
 """Household state store. In-memory with optional JSON persistence; one state object per household."""
 from __future__ import annotations
 
-import json
 import threading
 import uuid
 from datetime import datetime
@@ -10,6 +9,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from .backends import Backend, JsonFileBackend
 from .errors import HomePilotError
 from .models import AuditEvent, Event, Household, Notification, Proposal, ShoppingItem, Task
 
@@ -32,13 +32,15 @@ def new_id(prefix: str) -> str:
 class Store:
     """Households are isolated by id; unknown ids are denied (no cross-household access)."""
 
-    def __init__(self, path: str | Path | None = None):
-        self._states: dict[str, HouseholdState] = {}
+    def __init__(self, path: str | Path | None = None, backend: Backend | None = None):
         self._lock = threading.RLock()
-        self._path = Path(path) if path else None
-        if self._path and self._path.exists():
-            raw = json.loads(self._path.read_text())
-            self._states = {k: HouseholdState.model_validate(v) for k, v in raw.items()}
+        self._backend: Backend | None = backend or (JsonFileBackend(path) if path else None)
+        self._states: dict[str, HouseholdState] = {}
+        if self._backend:
+            self._states = {k: HouseholdState.model_validate_json(v) for k, v in self._backend.load_all().items()}
+
+    def has(self, household_id: str) -> bool:
+        return household_id in self._states
 
     @property
     def lock(self) -> threading.RLock:
@@ -72,6 +74,6 @@ class Store:
         return ev
 
     def flush(self) -> None:
-        if self._path:
-            self._path.parent.mkdir(parents=True, exist_ok=True)
-            self._path.write_text(json.dumps({k: json.loads(v.model_dump_json()) for k, v in self._states.items()}))
+        if self._backend:
+            for hid, st in self._states.items():
+                self._backend.save(hid, st.model_dump_json())

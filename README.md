@@ -34,7 +34,9 @@ Key design rules (from the spec): write tools only **stage drafts**; only a huma
 5. `make demo-seed` resets the synthetic household
 6. Open http://localhost:8000
 
-For Bedrock mode set `HOMEPILOT_AGENT=bedrock`, AWS credentials and `HOMEPILOT_MODEL_ID` (Bedrock model access required). The Bedrock path is implemented but **not yet tested** against a live account.
+State: in-memory by default; `HOMEPILOT_DATA_FILE` for JSON, `HOMEPILOT_DDB_TABLE` for DynamoDB (tested against moto). AWS deployment files: `Dockerfile`, `infra/template.yaml`, `docs/DEPLOY.md` (not yet deployed).
+
+For Bedrock mode set `HOMEPILOT_AGENT=bedrock`, AWS credentials and `HOMEPILOT_MODEL_ID` (Bedrock model access required). The Strands agent is tested over real MCP with a scripted model in place of Bedrock; the live Bedrock call is **not yet tested**.
 
 ## Reproducible judge scenario
 Run `make demo-seed`, open the app, click **Plan it** with the text from `demo/golden_scenario.txt`, then **Confirm & save**. Switch "Acting as" to Ali to see only Ali's next actions. The other chips cover an ambiguous owner and an impossible schedule.
