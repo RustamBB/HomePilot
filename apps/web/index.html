@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HomePilot AI</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--ink:#16202a;--mut:#5b6773;--line:#dde2e8;--acc:#1f5eff;--ok:#12794a;--warn:#a15c00;--bad:#b3261e}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1318;--card:#171d24;--ink:#e8edf2;--mut:#9aa6b2;--line:#2a333d;--acc:#6b95ff;--ok:#4cc38a;--warn:#f0a43a;--bad:#ff8a80}}
+*{box-sizing:border-box}body{margin:0;font:15px/1.45 system-ui,sans-serif;background:var(--bg);color:var(--ink)}
+header{display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:12px 20px;border-bottom:1px solid var(--line);background:var(--card)}
+h1{font-size:18px;margin:0 auto 0 0}h2{font-size:15px;margin:0 0 8px}
+main{display:grid;grid-template-columns:minmax(320px,440px) 1fr;gap:16px;padding:16px 20px;max-width:1300px;margin:auto}
+@media(max-width:860px){main{grid-template-columns:1fr}}
+section.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:16px}
+button,select,textarea{font:inherit;color:inherit}
+button{background:var(--acc);color:#fff;border:0;border-radius:8px;padding:8px 12px;cursor:pointer}
+button.sec{background:transparent;color:var(--ink);border:1px solid var(--line)}
+button:focus-visible,select:focus-visible,textarea:focus-visible,[role=tab]:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
+button:disabled{opacity:.5;cursor:default}
+textarea{width:100%;min-height:84px;padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--bg)}
+select{padding:6px;border-radius:8px;border:1px solid var(--line);background:var(--bg)}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}.chips button{font-size:13px}
+.bubble{white-space:pre-wrap;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px;margin:8px 0}
+.tag{display:inline-block;font-size:12px;border:1px solid var(--line);border-radius:99px;padding:1px 8px;color:var(--mut)}
+.tag.high{color:var(--bad);border-color:var(--bad)}.tag.medium{color:var(--warn);border-color:var(--warn)}.tag.ok{color:var(--ok);border-color:var(--ok)}
+.trace{font:12px/1.5 ui-monospace,monospace;color:var(--mut)}.trace b{color:var(--ink)}
+ul{padding-left:18px;margin:6px 0}li{margin:3px 0}.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+[role=tablist]{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:12px;flex-wrap:wrap}
+[role=tab]{background:none;color:var(--mut);border-radius:8px 8px 0 0;border-bottom:3px solid transparent}
+[role=tab][aria-selected=true]{color:var(--ink);border-bottom-color:var(--acc)}
+.muted{color:var(--mut)}.item{padding:8px 0;border-bottom:1px solid var(--line)}.item:last-child{border:0}
+</style>
+</head>
+<body>
+<header>
+  <h1>HomePilot AI <span class="tag">demo · synthetic household</span></h1>
+  <label for="who">Acting as</label>
+  <select id="who"></select>
+  <span id="health" class="tag" role="status">checking…</span>
+  <button class="sec" id="reset">Reset demo</button>
+</header>
+<main>
+  <div>
+    <section class="card" aria-labelledby="ask-h">
+      <h2 id="ask-h">Ask HomePilot</h2>
+      <label for="msg" class="muted">Describe the situation once, in your own words.</label>
+      <textarea id="msg"></textarea>
+      <div class="chips" id="chips"></div>
+      <div class="row"><button id="send">Plan it</button><span id="busy" class="muted" role="status"></span></div>
+      <div id="reply" aria-live="polite"></div>
+    </section>
+    <section class="card" id="tracecard" hidden aria-labelledby="tr-h">
+      <h2 id="tr-h">Live agent → MCP tool trace</h2>
+      <div class="trace" id="trace"></div>
+    </section>
+  </div>
+  <div>
+    <section class="card">
+      <div role="tablist" aria-label="Views" id="tabs"></div>
+      <div id="view" role="tabpanel" tabindex="0"></div>
+    </section>
+  </div>
+</main>
+<script>
+const GOLDEN = "Tomorrow our child has the doctor at 9. I start work at 8:30, Ali has class at 10, we are out of milk, and the science project is due Monday.";
+const CHIPS = [["Golden scenario", GOLDEN],
+  ["Ambiguous owner", "Maya has a dentist appointment tomorrow at 2."],
+  ["Impossible schedule", "Tomorrow our child has the doctor at 9. I start work at 8:30 and Ali has class at 8:45."]];
+const TABS = ["Today","Plan","Tasks","Shopping","People","Activity"];
+let S = null, tab = "Today", proposal = null, who = "sam";
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const api = async (path, body) => {
+  const r = await fetch("/api" + path, body ? {method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)} : {});
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.detail || r.statusText);
+  return j;
+};
+const name = id => S?.context.household.people.find(p => p.id === id)?.display_name ?? (id || "unassigned");
+const fmt = iso => iso ? new Date(iso).toLocaleString([], {weekday:"short",month:"short",day:"numeric",hour:"numeric",minute:"2-digit"}) : "";
+
+async function refresh() {
+  S = await api("/state");
+  if (!$("#who").options.length) {
+    $("#who").innerHTML = S.context.household.people.filter(p => p.role !== "child")
+      .map(p => `<option value="${p.id}">${esc(p.display_name)}</option>`).join("");
+  }
+  render();
+}
+function render() {
+  $("#tabs").innerHTML = TABS.map(t => `<button role="tab" aria-selected="${t===tab}" data-t="${t}">${t}</button>`).join("");
+  $("#tabs").querySelectorAll("button").forEach(b => b.onclick = () => { tab = b.dataset.t; render(); });
+  const v = VIEWS[tab]();
+  $("#view").innerHTML = v;
+  loadNext();
+}
+const sev = s => `<span class="tag ${s}">${s === "high" ? "⚠ " : ""}${s}</span>`;
+const VIEWS = {
+  Today() {
+    const mine = who;
+    return `<h2>Household brief</h2><p>${esc(S.brief.summary)}</p>
+      <h2>At risk</h2>${S.conflicts.length ? S.conflicts.map(c => `<div class="item">${sev(c.severity)} ${esc(c.message)}<div class="muted">${esc(c.options.join(" · "))}</div></div>`).join("") : '<p class="muted">Nothing at risk.</p>'}
+      <h2>Next actions for <span id="np"></span></h2><div id="next">Loading…</div>`;
+  },
+  Plan() { return S.events.length ? S.events.map(e => `<div class="item"><b>${esc(e.title)}</b> <span class="tag">${esc(e.kind)}</span><br><span class="muted">${fmt(e.start)} – ${new Date(e.end).toLocaleTimeString([], {hour:"numeric",minute:"2-digit"})} · owner: ${esc(name(e.owner))} · with ${esc(e.attendees.map(name).join(", "))}</span></div>`).join("") : "<p>No events.</p>"; },
+  Tasks() { return S.tasks.map(t => `<div class="item"><b>${esc(t.title)}</b> <span class="tag ${t.priority==="high"?"high":""}">${esc(t.priority)}</span><br><span class="muted">owner: ${esc(name(t.owner))} · due ${fmt(t.due_at)}${t.reasoning ? " · why: " + esc(t.reasoning) : ""}</span></div>`).join("") || "<p>No open tasks.</p>"; },
+  Shopping() { return S.shopping.map(s => `<div class="item"><b>${esc(s.name)}</b> ×${esc(s.quantity)} <span class="muted">· ${esc(name(s.assigned_to))}${s.note ? " · " + esc(s.note) : ""}</span></div>`).join("") || "<p>Nothing needed.</p>"; },
+  People() { return S.context.household.people.map(p => `<div class="item"><b>${esc(p.display_name)}</b> <span class="tag">${esc(p.role)}</span><br><span class="muted">responsible for: ${esc(p.responsibilities.join(", ") || "—")} · notifications: ${esc(p.notification_style)}</span></div>`).join(""); },
+  Activity() { return S.audit.map(a => `<div class="item"><span class="tag ${a.approval_state==="confirmed"?"ok":""}">${esc(a.approval_state)}</span> <b>${esc(a.tool)}</b> by ${esc(name(a.actor))}<br><span class="muted">${esc(a.summary)} · ${fmt(a.timestamp)}</span></div>`).join("") || "<p>No activity yet.</p>"; },
+};
+async function loadNext() {
+  if (tab !== "Today") return;
+  const el = $("#next"); if (!el) return;
+  $("#np").textContent = name(who);
+  const r = await api(`/people/${who}/next`);
+  el.innerHTML = (r.next.items.map(i => `<div class="item"><b>${esc(i.title)}</b> <span class="muted">${fmt(i.when)}</span><br><span class="muted">${esc(i.why)}</span></div>`).join("")
+    || '<p class="muted">Nothing for you right now.</p>')
+    + r.next.notifications.map(n => `<div class="item">🔔 ${esc(n)}</div>`).join("");
+}
+
+function showProposal(p, reply, trace) {
+  proposal = p;
+  $("#tracecard").hidden = false;
+  $("#trace").innerHTML = trace.map((t,i) => `<div>${i+1}. <b>${esc(t.tool)}</b> ${t.error ? "✖ " + esc(t.error) : "→ " + esc(t.summary)} ${t.ms != null ? `<span>(${t.ms} ms)</span>` : ""}</div>`).join("");
+  let h = `<div class="bubble">${esc(reply)}</div>`;
+  if (p) {
+    const owned = p.actions.map((a,i) => [a,i]).filter(([a]) => ["create_event","create_task","add_shopping"].includes(a.type) && a.args.kind !== "busy");
+    h += `<div class="row"><span class="tag">confidence: ${esc(p.confidence)}</span>${p.constraints_considered.length ? `<span class="muted">Considered: ${esc(p.constraints_considered.join("; "))}</span>` : ""}</div><ul>` +
+      owned.map(([a,i]) => { const cur = a.args.owner ?? a.args.assigned_to ?? "";
+        return `<li>${esc(a.args.title ?? a.args.name)} — <label class="muted">owner <select data-i="${i}"><option value="">(none)</option>${S.context.household.people.filter(x=>x.role==="parent"||x.role==="caregiver").map(x=>`<option value="${x.id}" ${x.id===cur?"selected":""}>${esc(x.display_name)}</option>`).join("")}</select></label></li>`; }).join("") +
+      `</ul><div class="row"><button id="ok">Confirm &amp; save</button><button class="sec" id="no">Reject</button></div><div id="res" role="status"></div>`;
+  }
+  $("#reply").innerHTML = h;
+  if (p) {
+    $("#ok").onclick = async () => {
+      const ov = {}; $("#reply").querySelectorAll("select[data-i]").forEach(s => {
+        const a = p.actions[+s.dataset.i], cur = a.args.owner ?? a.args.assigned_to ?? ""; if (s.value && s.value !== cur) ov[s.dataset.i] = s.value; });
+      try { await api(`/proposals/${p.id}/confirm`, {actor_id: who, overrides: ov});
+        $("#res").innerHTML = `✅ Saved. <button class="sec" id="undo">Undo</button>`;
+        $("#undo").onclick = async () => { await api(`/proposals/${p.id}/undo`, {actor_id: who}); $("#res").textContent = "Undone."; await refresh(); };
+        $("#ok").disabled = $("#no").disabled = true; tab = "Plan"; await refresh();
+      } catch (e) { $("#res").textContent = "Could not save: " + e.message; }
+    };
+    $("#no").onclick = async () => { await api(`/proposals/${p.id}/reject`, {actor_id: who}); $("#res").textContent = "Rejected. Nothing was saved."; $("#ok").disabled = $("#no").disabled = true; await refresh(); };
+  }
+}
+$("#chips").innerHTML = CHIPS.map(([l], i) => `<button class="sec" data-c="${i}">${l}</button>`).join("");
+$("#chips").querySelectorAll("button").forEach(b => b.onclick = () => { $("#msg").value = CHIPS[b.dataset.c][1]; });
+$("#msg").value = GOLDEN;
+$("#who").onchange = e => { who = e.target.value; render(); };
+$("#send").onclick = async () => {
+  $("#send").disabled = true; $("#busy").textContent = "Thinking and calling tools…";
+  try { const r = await api("/chat", {message: $("#msg").value, actor_id: who}); await refresh(); showProposal(r.proposal, r.reply, r.trace); }
+  catch (e) { $("#reply").innerHTML = `<div class="bubble">⚠ ${esc(e.message)}</div>`; }
+  finally { $("#send").disabled = false; $("#busy").textContent = ""; }
+};
+$("#reset").onclick = async () => { await api("/demo/reset", {}); $("#reply").innerHTML = ""; $("#tracecard").hidden = true; await refresh(); };
+(async () => {
+  const h = await api("/health"); const el = $("#health");
+  el.textContent = h.ok ? `MCP ${h.mcp_protocol} · ${h.tools} tools · ${h.agent} agent` : "MCP offline";
+  el.className = "tag " + (h.ok ? "ok" : "high");
+  if (h.ok) await refresh();
+})();
+</script>
+</body>
+</html>
