@@ -8,7 +8,7 @@ HomePilot AI is a household coordination agent for the Amazon Developer Hackatho
 
 ## Track
 - Primary: Alexa+ (web-simulated experience + self-hosted MCP server, Streamable HTTP, protocol 2025-11-25)
-- Mini challenge: AWS Builder (Bedrock + Strands agent; DynamoDB/CloudWatch planned, see roadmap)
+- Mini challenge: AWS Builder (Strands agent + Bedrock + DynamoDB; see `docs/SUBMISSION.md` for what has been verified)
 
 ## Architecture
 Web simulator -> FastAPI -> agent (offline rules **or** Strands + Amazon Bedrock) -> HomePilot MCP server -> household domain -> state store.
